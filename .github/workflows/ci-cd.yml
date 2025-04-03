@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths-ignore:
-      - 'kubernetes/deployment.yaml'  # Ignore changes to this file to prevent loops
+      - 'kubernetes/deployment.yaml'  # Ignore changes to prevent infinite loops
   pull_request:
     branches: [ main ]
 
@@ -110,22 +110,26 @@ jobs:
             type=ref,event=branch
             latest
       
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          load: true
-            
-      - name: Push Docker image
+      - name: Build and Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      
+      - name: Wait for Image Availability
+        run: sleep 30  # Ensures the image is fully available before scanning
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: 'table'
+          exit-code: '0'  # Set to '1' if you want to fail on vulnerabilities
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
       
       - name: Set image tag output
         run: echo "IMAGE_TAG=sha-${{ github.sha }}" >> "$GITHUB_ENV"
@@ -169,4 +173,3 @@ jobs:
             git add kubernetes/deployment.yaml
             git commit -m "Update Kubernetes deployment with new image tag: $IMAGE_TAG [skip ci]"
             git push
-          fi
