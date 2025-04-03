@@ -80,8 +80,6 @@ jobs:
     env:
       REGISTRY: ghcr.io
       IMAGE_NAME: ${{ github.repository }}
-    outputs:
-      image_tag: ${{ steps.set_output.outputs.image_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -124,7 +122,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          image-ref: ${{ steps.meta.outputs.tags }}
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
@@ -140,8 +138,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
       
       - name: Set image tag output
-        id: set_output
-        run: echo "image_tag=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: echo "IMAGE_TAG=sha-${{ github.sha }}" >> "$GITHUB_ENV"
 
   update-k8s:
     name: Update Kubernetes Deployment
@@ -161,7 +158,6 @@ jobs:
       
       - name: Update Kubernetes deployment file
         env:
-          IMAGE_TAG: sha-${{ github.sha }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           REGISTRY: ghcr.io
         run: |
@@ -177,6 +173,10 @@ jobs:
       
       - name: Commit and push changes
         run: |
-          git add kubernetes/deployment.yaml
-          git commit -m "Update Kubernetes deployment with new image tag: ${{ needs.docker.outputs.image_tag }} [skip ci]" || echo "No changes to commit"
-          git push
+          if git diff --exit-code kubernetes/deployment.yaml; then
+            echo "No changes detected, skipping commit."
+          else
+            git add kubernetes/deployment.yaml
+            git commit -m "Update Kubernetes deployment with new image tag: $IMAGE_TAG [skip ci]"
+            git push
+          fi
