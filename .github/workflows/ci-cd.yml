@@ -173,3 +173,4 @@ jobs:
             git add kubernetes/deployment.yaml
             git commit -m "Update Kubernetes deployment with new image tag: $IMAGE_TAG [skip ci]"
             git push
+          fi
